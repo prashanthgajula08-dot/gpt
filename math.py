@@ -1,0 +1,9 @@
+import math
+# print(math.pi)
+# print(math.fabs(-987))
+# print(math.ceil(9.1))
+# print(math.floor(9.1))
+# print(math.pow(9,2))
+# print(math.sqrt(120))
+# print(math.factorial(6))
+# print(math.fmod(25,6))

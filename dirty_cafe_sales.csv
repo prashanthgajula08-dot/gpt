@@ -1,0 +1,11 @@
+id,name,age,email,phone,city,salary,join_date
+1,Prashanth Gajula,23,prashanth@gmail.com,9876543210,Hyderabad,25000,2023-01-15
+2,Anil Kumar,NA,anil@@mail.com,12345,Hyderabad,30000,15-02-2023
+3,,27,ram@gmail,9999999999,Bangalore,NA,2023/03/10
+4,Sneha Reddy,twenty five,sneha@gmail.com,8888888888,,40000,2023-04-01
+5,Ravi Teja,29,,7777777777,Chennai,45000,April 5 2023
+6,NA,31,kiran@gmail.com,NA,Hyderabad,50000,2023-06-12
+7,Pooja Sharma,28,pooja@gmail.com,6666666666,Mumbai,-10000,2023-07-20
+8,Arjun, ,arjun@gmail.com,5555555555,Delhi,35000,2023-08-15
+9,Kavya Nair,26,kavya@gmail.com,invalid,Kerala,38000,2023-13-01
+10,Rahul Das,32,rahul@gmail.com,4444444444,Kolkata,42000,
