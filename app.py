@@ -8,8 +8,19 @@ import io
 import json
 import datetime
 import os
+import requests
 
 st.set_page_config(page_title="Prashanth GPT", page_icon="✨", layout="centered")
+
+# Retrieve Groq API Key if configured
+groq_api_key = None
+try:
+    groq_api_key = st.secrets.get("GROQ_API_KEY")
+except Exception:
+    pass
+
+if not groq_api_key:
+    groq_api_key = os.environ.get("GROQ_API_KEY")
 
 # Initialize Ollama client (checks Streamlit secrets, environment, or defaults to localhost)
 ollama_host = None
@@ -94,7 +105,7 @@ defaults = {
         "bullet points, and code blocks to make answers easy to understand."
     ),
     "tokens_used": 0,
-    "model": "qwen2.5:3b",
+    "model": "llama-3.1-8b-instant" if groq_api_key else "qwen2.5:3b",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -104,7 +115,9 @@ for k, v in defaults.items():
 # HELPER FUNCTIONS
 # ══════════════════════════════════════════
 def check_ollama():
-    """Check if Ollama is running and reachable."""
+    """Check if Ollama is running and reachable (bypassed if Groq is active)."""
+    if groq_api_key:
+        return True
     try:
         client.list()
         return True
@@ -112,7 +125,15 @@ def check_ollama():
         return False
 
 def get_available_models():
-    """Fetch locally available Ollama models."""
+    """Fetch locally available Ollama models or Groq cloud models."""
+    if groq_api_key:
+        return [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama-3.2-11b-vision-preview",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ]
     try:
         # New ollama library returns typed Model objects, access via .model attribute
         return [m.model for m in client.list().models]
@@ -158,18 +179,55 @@ def export_txt():
     return "\n".join(lines)
 
 def stream_reply(model, messages, temperature):
-    """Stream a reply from Ollama, yielding content chunks."""
-    try:
-        stream = client.chat(
-            model=model,
-            messages=messages,
-            stream=True,
-            options={"temperature": temperature}
-        )
-        for chunk in stream:
-            yield chunk["message"]["content"]
-    except Exception as e:
-        yield f"❌ Error: {e}"
+    """Stream a reply from Ollama or Groq, yielding content chunks."""
+    if groq_api_key:
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            clean_messages = []
+            for m in messages:
+                clean_messages.append({"role": m["role"], "content": m["content"]})
+            data = {
+                "model": model,
+                "messages": clean_messages,
+                "stream": True,
+                "temperature": temperature
+            }
+            response = requests.post(url, headers=headers, json=data, stream=True)
+            if response.status_code != 200:
+                yield f"❌ Groq Error {response.status_code}: {response.text}"
+                return
+            for line in response.iter_lines():
+                if line:
+                    decoded = line.decode('utf-8')
+                    if decoded.startswith("data: "):
+                        content = decoded[6:]
+                        if content == "[DONE]":
+                            break
+                        try:
+                            chunk_json = json.loads(content)
+                            delta = chunk_json['choices'][0]['delta']
+                            if 'content' in delta:
+                                yield delta['content']
+                        except Exception:
+                            pass
+        except Exception as e:
+            yield f"❌ Error: {e}"
+    else:
+        try:
+            stream = client.chat(
+                model=model,
+                messages=messages,
+                stream=True,
+                options={"temperature": temperature}
+            )
+            for chunk in stream:
+                yield chunk["message"]["content"]
+        except Exception as e:
+            yield f"❌ Error: {e}"
 
 # ══════════════════════════════════════════
 # OLLAMA HEALTH CHECK
@@ -386,8 +444,11 @@ if user_input:
         user_msg["images"] = [image_bytes]
 
     model_to_use = selected_model
-    if image_bytes and "llava" not in selected_model.lower():
-        model_to_use = "llava:latest"
+    if image_bytes:
+        if groq_api_key:
+            model_to_use = "llama-3.2-11b-vision-preview"
+        elif "llava" not in selected_model.lower():
+            model_to_use = "llava:latest"
 
     history = [{"role": "system", "content": st.session_state.system_prompt}]
     history += st.session_state.messages[:-1] + [user_msg]
@@ -396,31 +457,76 @@ if user_input:
     with st.chat_message("assistant", avatar="✨"):
         placeholder = st.empty()
         full_response = ""
+        tokens_this_reply = 0
 
         try:
-            stream = client.chat(
-                model=model_to_use,
-                messages=history,
-                stream=True,
-                options={"temperature": temperature}
-            )
-            tokens_this_reply = 0
-            for chunk in stream:
-                # New ollama library: typed objects, use .message.content
-                content = chunk.message.content or ""
-                full_response += content
-                placeholder.markdown(full_response + "▌")
-                # Capture real token count from final chunk
-                if chunk.done and chunk.eval_count:
-                    tokens_this_reply = chunk.eval_count
+            if groq_api_key:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {groq_api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                # Build messages payload for Groq (handling base64 images)
+                clean_history = []
+                for m in history:
+                    if m.get("images"):
+                        b64_img = base64.b64encode(m["images"][0]).decode("utf-8")
+                        clean_content = [
+                            {"type": "text", "text": m["content"]},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}}
+                        ]
+                        clean_history.append({"role": m["role"], "content": clean_content})
+                    else:
+                        clean_history.append({"role": m["role"], "content": m["content"]})
 
-            placeholder.markdown(full_response)
+                data = {
+                    "model": model_to_use,
+                    "messages": clean_history,
+                    "stream": True,
+                    "temperature": temperature
+                }
+                
+                response = requests.post(url, headers=headers, json=data, stream=True)
+                if response.status_code != 200:
+                    full_response = f"❌ Groq Error {response.status_code}: {response.text}"
+                    placeholder.error(full_response)
+                else:
+                    for line in response.iter_lines():
+                        if line:
+                            decoded_line = line.decode('utf-8')
+                            if decoded_line.startswith("data: "):
+                                content = decoded_line[6:]
+                                if content == "[DONE]":
+                                    break
+                                try:
+                                    chunk_json = json.loads(content)
+                                    delta = chunk_json['choices'][0]['delta']
+                                    if 'content' in delta:
+                                        full_response += delta['content']
+                                        placeholder.markdown(full_response + "▌")
+                                except Exception:
+                                    pass
+                    placeholder.markdown(full_response)
+            else:
+                stream = client.chat(
+                    model=model_to_use,
+                    messages=history,
+                    stream=True,
+                    options={"temperature": temperature}
+                )
+                for chunk in stream:
+                    content = chunk.message.content or ""
+                    full_response += content
+                    placeholder.markdown(full_response + "▌")
+                    if chunk.done and chunk.eval_count:
+                        tokens_this_reply = chunk.eval_count
+                placeholder.markdown(full_response)
 
-            # Use real token count if available, else estimate
             st.session_state.tokens_used += tokens_this_reply or max(1, len(full_response) // 4)
 
         except Exception as e:
-            full_response = f"❌ Error: {e}\n\nMake sure the model `{model_to_use}` is downloaded:\n```\nollama pull {model_to_use}\n```"
+            full_response = f"❌ Error: {e}"
             placeholder.error(full_response)
 
         # Speak reply only for voice input
