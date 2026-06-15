@@ -22,7 +22,7 @@ if not ollama_host:
     ollama_host = os.environ.get("OLLAMA_HOST")
 
 if ollama_host:
-    client = ollama.Client(host=ollama_host)
+    client = ollama.Client(host=ollama_host, headers={'Bypass-Tunnel-Reminder': 'true'})
 else:
     client = ollama.Client()
 
