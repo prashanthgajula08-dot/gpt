@@ -7,8 +7,24 @@ import base64
 import io
 import json
 import datetime
+import os
 
 st.set_page_config(page_title="Prashanth GPT", page_icon="✨", layout="centered")
+
+# Initialize Ollama client (checks Streamlit secrets, environment, or defaults to localhost)
+ollama_host = None
+try:
+    ollama_host = st.secrets.get("OLLAMA_HOST")
+except Exception:
+    pass
+
+if not ollama_host:
+    ollama_host = os.environ.get("OLLAMA_HOST")
+
+if ollama_host:
+    client = ollama.Client(host=ollama_host)
+else:
+    client = ollama.Client()
 
 # ══════════════════════════════════════════
 # CUSTOM CSS
@@ -90,7 +106,7 @@ for k, v in defaults.items():
 def check_ollama():
     """Check if Ollama is running and reachable."""
     try:
-        ollama.list()
+        client.list()
         return True
     except Exception:
         return False
@@ -99,7 +115,7 @@ def get_available_models():
     """Fetch locally available Ollama models."""
     try:
         # New ollama library returns typed Model objects, access via .model attribute
-        return [m.model for m in ollama.list().models]
+        return [m.model for m in client.list().models]
     except Exception:
         return ["qwen2.5:3b", "llava:latest", "mistral", "llama3.2"]
 
@@ -144,7 +160,7 @@ def export_txt():
 def stream_reply(model, messages, temperature):
     """Stream a reply from Ollama, yielding content chunks."""
     try:
-        stream = ollama.chat(
+        stream = client.chat(
             model=model,
             messages=messages,
             stream=True,
@@ -382,7 +398,7 @@ if user_input:
         full_response = ""
 
         try:
-            stream = ollama.chat(
+            stream = client.chat(
                 model=model_to_use,
                 messages=history,
                 stream=True,
