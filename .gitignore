@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Local CSV data / plots (excluding code if needed, but keeping app.py)
+*.csv
+*.png
+*.json
+!package.json
+
+# Local scripts not part of the main chatbot
+/LR_project.py
+/com.py
+/dt.py
+/exp.py
+/inspect_ollama_api.py
+/linkedin.py
+/math.py
+/matplt.py
+/mysqldb.py
+/mysqldb2.py
+/nplink.py
+/num.py
+/panda.py
+/pdbc.py
+/req.py
+/sea.py
+node_modules/
